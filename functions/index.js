@@ -92,6 +92,8 @@ export const jiraOrchestrator = onRequest({
 
     const jiraUrl = `${JIRA_BASE.value()}/browse/${issueKey}`;
     const issueBody = [
+      `@claude implement this:`,
+      "",
       `## Jira Description`,
       description || "(no description)",
       "",
