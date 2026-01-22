@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Jira Agent - Automated Development Pipeline</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <svg class="logo" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span>AI Jira Agent</span>
+            </div>
+            <div class="nav-links">
+                <a href="#how-it-works">How it Works</a>
+                <a href="#features">Features</a>
+                <a href="#architecture">Architecture</a>
+                <a href="https://github.com" target="_blank" class="github-link">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <section class="hero">
+        <div class="container">
+            <div class="badge">AUTOMATED DEVELOPMENT</div>
+            <h1 class="hero-title">
+                From Jira ticket to<br>
+                <span class="gradient-text">Pull Request in minutes</span>
+            </h1>
+            <p class="hero-subtitle">
+                Assign a Jira ticket to Super AI Agent, watch it create code, open PRs, and transition tickets automatically.
+                Powered by Claude AI, GitHub Actions, and Firebase Functions.
+            </p>
+            <div class="hero-actions">
+                <button class="btn btn-primary" onclick="showDemo()">See it in Action</button>
+                <a href="#how-it-works" class="btn btn-secondary">Learn More</a>
+            </div>
+        </div>
+    </section>
+
+    <section id="how-it-works" class="section">
+        <div class="container">
+            <h2 class="section-title">How It Works</h2>
+            <div class="workflow-grid">
+                <div class="workflow-step" data-aos="fade-up" data-aos-delay="100">
+                    <div class="step-number">1</div>
+                    <div class="step-icon">📋</div>
+                    <h3>Create Jira Issue</h3>
+                    <p>Create a ticket and assign it to the AI Agent service account</p>
+                </div>
+                <div class="workflow-arrow">→</div>
+                <div class="workflow-step" data-aos="fade-up" data-aos-delay="200">
+                    <div class="step-number">2</div>
+                    <div class="step-icon">⚡</div>
+                    <h3>Webhook Triggers</h3>
+                    <p>Jira automation sends webhook to Firebase orchestrator</p>
+                </div>
+                <div class="workflow-arrow">→</div>
+                <div class="workflow-step" data-aos="fade-up" data-aos-delay="300">
+                    <div class="step-number">3</div>
+                    <div class="step-icon">⚙️</div>
+                    <h3>GitHub Action</h3>
+                    <p>Orchestrator triggers workflow with issue details</p>
+                </div>
+                <div class="workflow-arrow">→</div>
+                <div class="workflow-step" data-aos="fade-up" data-aos-delay="400">
+                    <div class="step-number">4</div>
+                    <div class="step-icon">🤖</div>
+                    <h3>Claude Generates</h3>
+                    <p>AI analyzes requirements and writes implementation</p>
+                </div>
+                <div class="workflow-arrow">→</div>
+                <div class="workflow-step" data-aos="fade-up" data-aos-delay="500">
+                    <div class="step-number">5</div>
+                    <div class="step-icon">✅</div>
+                    <h3>PR Created</h3>
+                    <p>Code committed, PR opened, Jira transitioned to review</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="features" class="section bg-light">
+        <div class="container">
+            <h2 class="section-title">Features</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9 11L12 14L22 4"></path>
+                            <path d="M21 12V19A2 2 0 0119 21H5A2 2 0 013 19V5A2 2 0 015 3H16"></path>
+                        </svg>
+                    </div>
+                    <h3>Automated Workflow</h3>
+                    <p>End-to-end automation from ticket creation to PR review</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M12 6V12L16 14"></path>
+                        </svg>
+                    </div>
+                    <h3>Fast Implementation</h3>
+                    <p>Generate code and open PRs in minutes, not hours</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2L2 7V17L12 22L22 17V7L12 2Z"></path>
+                            <path d="M12 22V12"></path>
+                            <path d="M22 7L12 12L2 7"></path>
+                        </svg>
+                    </div>
+                    <h3>Intelligent Code</h3>
+                    <p>Claude AI understands context and writes production-ready code</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M17 21V13H7V21M7 3V8H15M10 12H14M12 3V8M7 21H17"></path>
+                        </svg>
+                    </div>
+                    <h3>Git Integration</h3>
+                    <p>Automatic branch creation, commits, and pull requests</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M14 2H6A2 2 0 004 4V20A2 2 0 006 22H18A2 2 0 0020 20V8L14 2Z"></path>
+                            <path d="M14 2V8H20"></path>
+                            <path d="M16 13H8"></path>
+                            <path d="M16 17H8"></path>
+                            <path d="M10 9H8"></path>
+                        </svg>
+                    </div>
+                    <h3>Jira Sync</h3>
+                    <p>Automatic status transitions and issue tracking</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 22S20 18 20 12V5L12 2L4 5V12C4 18 12 22 12 22Z"></path>
+                        </svg>
+                    </div>
+                    <h3>Secure Pipeline</h3>
+                    <p>Encrypted secrets and authenticated webhooks</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="architecture" class="section">
+        <div class="container">
+            <h2 class="section-title">Architecture</h2>
+            <div class="architecture-diagram">
+                <div class="arch-component jira">
+                    <div class="component-icon">📋</div>
+                    <h4>Jira Cloud</h4>
+                    <p>Issue tracking & automation rules</p>
+                </div>
+                <div class="arch-flow">→</div>
+                <div class="arch-component firebase">
+                    <div class="component-icon">🔥</div>
+                    <h4>Firebase Functions</h4>
+                    <p>Webhook orchestrator</p>
+                </div>
+                <div class="arch-flow">→</div>
+                <div class="arch-component github">
+                    <div class="component-icon">🐙</div>
+                    <h4>GitHub Actions</h4>
+                    <p>CI/CD workflows</p>
+                </div>
+                <div class="arch-flow">→</div>
+                <div class="arch-component claude">
+                    <div class="component-icon">🤖</div>
+                    <h4>Claude AI</h4>
+                    <p>Code generation</p>
+                </div>
+            </div>
+            <div class="tech-stack">
+                <h3>Tech Stack</h3>
+                <div class="tech-badges">
+                    <span class="tech-badge">Firebase Functions v2</span>
+                    <span class="tech-badge">GitHub Actions</span>
+                    <span class="tech-badge">Claude 3.5 Sonnet</span>
+                    <span class="tech-badge">Python</span>
+                    <span class="tech-badge">Node.js</span>
+                    <span class="tech-badge">Jira REST API</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section bg-dark">
+        <div class="container">
+            <div class="cta">
+                <h2>Ready to automate your development?</h2>
+                <p>Deploy this complete solution in your organization today</p>
+                <div class="cta-actions">
+                    <a href="https://github.com" class="btn btn-light">View on GitHub</a>
+                    <button class="btn btn-outline" onclick="copyCommand()">Copy Deploy Command</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container">
+            <p>© 2024 AI Jira Agent Demo. Built with Firebase, GitHub Actions, and Claude AI.</p>
+        </div>
+    </footer>
+
+    <div id="demo-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeDemo()">&times;</span>
+            <h2>Live Demo</h2>
+            <div class="demo-terminal">
+                <div class="terminal-header">
+                    <span class="terminal-dot red"></span>
+                    <span class="terminal-dot yellow"></span>
+                    <span class="terminal-dot green"></span>
+                </div>
+                <pre id="demo-output" class="terminal-body"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

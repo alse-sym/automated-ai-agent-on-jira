@@ -1,0 +1,246 @@
+name: Claude Code Agent
+
+on:
+  issues:
+    types: [opened]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to process"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  claude-agent:
+    runs-on: ubuntu-latest
+    environment: Production
+    # Only run for issues with from-jira label and @claude mention
+    if: |
+      (github.event_name == 'issues' && 
+       contains(github.event.issue.labels.*.name, 'from-jira') &&
+       contains(github.event.issue.body, '@claude')) ||
+      github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Claude Code CLI
+        run: |
+          # Install Claude Code CLI globally as per documentation
+          npm install -g @anthropic-ai/claude-code
+
+          # Verify installation
+          which claude || echo "Claude CLI should be available via npx"
+
+      - name: Extract Issue Details
+        id: issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
+        run: |
+          # Get issue details
+          ISSUE_JSON=$(gh api repos/${{ github.repository }}/issues/${ISSUE_NUMBER})
+
+          # Extract title and body
+          TITLE=$(echo "$ISSUE_JSON" | jq -r '.title')
+          BODY=$(echo "$ISSUE_JSON" | jq -r '.body')
+
+          # Extract Jira key from title (format: "SCRUM-123: Description")
+          JIRA_KEY=$(echo "$TITLE" | grep -oE '^[A-Z]+-[0-9]+' || echo "TASK")
+
+          # Extract clean title (remove Jira key prefix)
+          CLEAN_TITLE=$(echo "$TITLE" | sed 's/^[A-Z]*-[0-9]*: *//')
+
+          # Clean the body - be more careful with the extraction
+          # Remove @claude mention but keep the actual request
+          CLEAN_BODY=$(echo "$BODY" | sed 's/@claude //g' | sed 's/@claude//g')
+
+          # Extract just the implementation request (before the --- separator)
+          IMPLEMENTATION_REQUEST=$(echo "$CLEAN_BODY" | awk '/^---$/{exit} {print}' | sed 's/implement this://g' | sed 's/^[[:space:]]*//' | sed '/^$/d')
+
+          # Save outputs
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+          echo "clean_title=$CLEAN_TITLE" >> $GITHUB_OUTPUT
+          echo "jira_key=$JIRA_KEY" >> $GITHUB_OUTPUT
+          echo "number=${ISSUE_NUMBER}" >> $GITHUB_OUTPUT
+
+          # Save the implementation request to file
+          echo "$IMPLEMENTATION_REQUEST" > /tmp/implementation_request.txt
+
+          # Debug: Show what we extracted
+          echo "=== Extracted Information ==="
+          echo "Jira Key: $JIRA_KEY"
+          echo "Clean Title: $CLEAN_TITLE"
+          echo "Implementation Request:"
+          cat /tmp/implementation_request.txt
+          echo "==========================="
+
+      - name: Configure Git
+        run: |
+          git config user.name "Claude Code Agent"
+          git config user.email "claude-agent[bot]@users.noreply.github.com"
+
+      - name: Create Implementation Branch
+        id: branch
+        run: |
+          # Branch name includes Jira key and timestamp for uniqueness
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          BRANCH_NAME="${{ steps.issue.outputs.jira_key }}-claude-impl-${{ steps.issue.outputs.number }}-${TIMESTAMP}"
+          
+          # For demo: alternatively use run ID for uniqueness
+          # BRANCH_NAME="${{ steps.issue.outputs.jira_key }}-claude-impl-${{ github.run_id }}"
+          
+          git checkout -b "$BRANCH_NAME"
+          echo "name=$BRANCH_NAME" >> $GITHUB_OUTPUT
+
+      - name: Implement with Claude Code CLI
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          # Get the implementation details
+          JIRA_KEY="${{ steps.issue.outputs.jira_key }}"
+          CLEAN_TITLE="${{ steps.issue.outputs.clean_title }}"
+          ISSUE_NUMBER="${{ steps.issue.outputs.number }}"
+
+          echo "=== Processing Implementation ==="
+          echo "Jira Key: $JIRA_KEY"
+          echo "Issue: #$ISSUE_NUMBER - $CLEAN_TITLE"
+          echo "Request:"
+          cat /tmp/implementation_request.txt
+          echo "================================"
+
+          # Create a complete prompt for Claude Code CLI
+          FULL_PROMPT="Please implement the following feature for Jira ticket $JIRA_KEY (GitHub issue #$ISSUE_NUMBER):
+
+          Title: $CLEAN_TITLE
+
+          Requirements:
+          $(cat /tmp/implementation_request.txt)
+
+          Please make all necessary code changes to fulfill these requirements. Include the Jira ticket number $JIRA_KEY in any relevant code comments."
+
+          echo "=== Calling Claude Code CLI ==="
+          echo "Using command: claude -p \"<prompt>\" --model claude-opus-4-1-20250805"
+          echo "================================"
+
+          # Use Claude Code CLI with correct syntax from documentation
+          # The -p flag runs in non-interactive mode and prints the result
+          claude -p "$FULL_PROMPT" \
+            --model "claude-opus-4-1-20250805" \
+            --append-system-prompt "You are a coding agent implementing features from Jira tickets. Make the necessary code changes directly to the files." \
+            --allowedTools "Read,Write,Edit,Bash,WebSearch" \
+            --permission-mode "acceptEdits" \
+            --verbose || {
+              echo "Claude Code CLI execution failed. Checking error..."
+              echo "Trying with npx prefix..."
+              npx @anthropic-ai/claude-code -p "$FULL_PROMPT" \
+                --model "claude-opus-4-1-20250805" \
+                --append-system-prompt "You are a coding agent implementing features from Jira tickets. Make the necessary code changes directly to the files." \
+                --allowedTools "Read,Write,Edit,Bash,WebSearch" \
+                --permission-mode "acceptEdits" \
+                --verbose || {
+                  echo "Claude Code CLI failed. This might be due to:"
+                  echo "1. API key not set correctly (ANTHROPIC_API_KEY)"
+                  echo "2. Model not available (claude-opus-4-1-20250805)"
+                  echo "3. CLI not installed correctly"
+                  exit 1
+                }
+            }
+
+      - name: Commit Changes
+        id: commit
+        run: |
+          # Check for changes
+          if [[ -n $(git status -s) ]]; then
+            git add -A
+            
+            # Commit message includes Jira key for tracking
+            COMMIT_MSG="${{ steps.issue.outputs.jira_key }}: Implement ${{ steps.issue.outputs.title }}
+            
+            Automated implementation by Claude Code Agent for issue #${{ steps.issue.outputs.number }}
+            Generated using Claude Code CLI"
+            
+            git commit -m "$COMMIT_MSG"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "No changes detected"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push Branch
+        if: steps.commit.outputs.has_changes == 'true'
+        run: |
+          # Push the branch (with force if needed for demo)
+          git push -u origin "${{ steps.branch.outputs.name }}" || {
+            echo "Regular push failed, trying with force for demo..."
+            git push -u origin "${{ steps.branch.outputs.name }}" --force
+          }
+
+      - name: Create Pull Request
+        if: steps.commit.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          # PR title includes Jira key for tracking
+          PR_TITLE="${{ steps.issue.outputs.jira_key }}: ${{ steps.issue.outputs.title }}"
+
+          # PR body with all tracking information
+          cat > /tmp/pr_body.md << 'EOF'
+          ## 🤖 Automated Implementation by Claude Code Agent
+
+          ### 📋 Source
+          - **GitHub Issue:** #${{ steps.issue.outputs.number }}
+          - **Jira Ticket:** ${{ steps.issue.outputs.jira_key }}
+          - **Jira URL:** https://your-domain.atlassian.net/browse/${{ steps.issue.outputs.jira_key }}
+
+          ### 🎯 Implementation
+          This PR was automatically generated by Claude Code Agent based on the issue description.
+
+          ### ✅ Checklist
+          - [ ] Code review completed
+          - [ ] Tests pass
+          - [ ] Ready to merge
+
+          ### 🔄 Workflow
+          1. Issue created from Jira: ✅
+          2. Claude Code implementation: ✅
+          3. PR created: ✅
+          4. Review pending: ⏳
+
+          ---
+          *Generated automatically by Claude Code CLI Agent*
+          EOF
+
+                      # Create PR with Jira key in title for tracking
+            gh pr create \
+              --title "$PR_TITLE" \
+              --body-file /tmp/pr_body.md \
+              --base main \
+              --head "${{ steps.branch.outputs.name }}" \
+              --label "from-jira"
+
+          # Comment on the original issue
+          gh issue comment ${{ steps.issue.outputs.number }} \
+            --body "🎉 Pull request created! The implementation is ready for review."
+
+      - name: Update Issue Status
+        if: steps.commit.outputs.has_changes == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ steps.issue.outputs.number }} \
+            --body "⚠️ No changes were needed for this implementation. The request may already be fulfilled or needs clarification."

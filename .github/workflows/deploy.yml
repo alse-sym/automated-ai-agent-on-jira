@@ -1,0 +1,86 @@
+name: Deploy Firebase (Hosting + Functions)
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: ["CI - Validation & Auto-Merge (Demo)"]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    # Run on push to main, merged PRs, manual dispatch, or successful CI completion
+    if: github.event_name == 'push' ||
+        (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    environment: Production # Use the Production environment secrets
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Firebase CLI
+        run: npm i -g firebase-tools
+
+      - name: Auth with Service Account
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "ERROR: FIREBASE_SERVICE_ACCOUNT secret is not set or empty"
+            exit 1
+          fi
+          echo "$FIREBASE_SERVICE_ACCOUNT" > ${GITHUB_WORKSPACE}/sa.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=${GITHUB_WORKSPACE}/sa.json" >> $GITHUB_ENV
+          echo "Service account file created successfully"
+
+      # No build step needed - web directory contains static HTML/CSS/JS files
+
+      - name: Install Functions Dependencies
+        run: |
+          cd functions
+          npm ci
+
+      - name: Deploy Hosting
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          if [ -z "$FIREBASE_PROJECT_ID" ]; then
+            echo "ERROR: FIREBASE_PROJECT_ID secret is not set or empty"
+            exit 1
+          fi
+          echo "Deploying Hosting to Firebase project: $FIREBASE_PROJECT_ID"
+          firebase deploy --only hosting --project "$FIREBASE_PROJECT_ID"
+
+      - name: Deploy Functions
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          echo "Deploying Functions to Firebase project: $FIREBASE_PROJECT_ID"
+          # Deploy specific function to avoid extensions check
+          firebase deploy --only functions:jiraOrchestrator --project "$FIREBASE_PROJECT_ID" --force || {
+            echo "Warning: Functions deployment failed. This might be due to:"
+            echo "1. Missing 'Firebase Extensions Viewer' role on the service account"
+            echo "2. First-time deployment may need to be done manually"
+            echo ""
+            echo "To fix this, either:"
+            echo "- Add 'Firebase Extensions Viewer' role to your service account in GCP Console"
+            echo "- Or run locally: firebase deploy --only functions"
+            echo ""
+            echo "Continuing with hosting deployment only..."
+          }

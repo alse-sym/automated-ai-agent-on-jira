@@ -1,0 +1,28 @@
+{
+  "name": "ai-jira-demo",
+  "version": "1.0.0",
+  "description": "Automated development pipeline: Jira → Claude → GitHub → Firebase",
+  "scripts": {
+    "deploy": "firebase deploy",
+    "deploy:functions": "firebase deploy --only functions",
+    "deploy:hosting": "firebase deploy --only hosting",
+    "functions:install": "cd functions && npm install",
+    "serve": "firebase serve --only hosting",
+    "serve:functions": "firebase serve --only functions",
+    "logs": "firebase functions:log",
+    "test:webhook": "node scripts/test-webhook.js"
+  },
+  "keywords": [
+    "jira",
+    "claude",
+    "ai",
+    "automation",
+    "firebase",
+    "github-actions"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
