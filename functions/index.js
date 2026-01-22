@@ -63,7 +63,7 @@ export const jiraOrchestrator = onRequest({
     const auth = "Basic " + Buffer.from(`${JIRA_EMAIL.value()}:${JIRA_API_TOKEN.value()}`).toString("base64");
     const jiraHeaders = { "Authorization": auth, "Accept": "application/json" };
 
-    let commentsMarkdown = "_No comments_");
+    let commentsMarkdown = "_No comments_";
     try {
       const commentsResp = await fetch(`${JIRA_BASE.value()}/rest/api/3/issue/${issueKey}/comment?expand=renderedBody`, {
         headers: jiraHeaders
