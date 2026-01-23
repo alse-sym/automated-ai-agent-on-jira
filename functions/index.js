@@ -5,13 +5,120 @@ import fetch from "node-fetch";
 // --- Secrets (configure via Firebase CLI) ---
 const GH_TOKEN = defineSecret("GH_TOKEN");                  // GitHub token (App or PAT)
 const WEBHOOK_SECRET = defineSecret("WEBHOOK_SECRET");      // Shared secret from Jira Automation header
-const JIRA_BASE = defineSecret("JIRA_BASE");                // e.g. https://your-domain.atlassian.net
+const JIRA_BASE = defineSecret("JIRA_BASE");                // e.g. https://your-domain.atlassian.net (for browse URLs)
+const JIRA_CLOUD_ID = defineSecret("JIRA_CLOUD_ID");        // Atlassian Cloud ID (for API with scoped tokens)
 const JIRA_EMAIL = defineSecret("JIRA_EMAIL");              // Jira service account email
-const JIRA_API_TOKEN = defineSecret("JIRA_API_TOKEN");      // Jira API token
+const JIRA_API_TOKEN = defineSecret("JIRA_API_TOKEN");      // Jira API token (with scopes)
+
+// --- Jira Helper Functions ---
+
+/**
+ * Transition a Jira issue to a target status by trying multiple common transition names
+ * @param {string} baseUrl - Jira base URL
+ * @param {string} auth - Basic auth header value
+ * @param {string} issueKey - Jira issue key (e.g., "SCRUM-123")
+ * @param {string[]} targetNames - Array of transition name patterns to try
+ * @returns {Promise<{success: boolean, transitionName?: string, error?: string, available?: string[]}>}
+ */
+async function transitionJiraIssue(baseUrl, auth, issueKey, targetNames) {
+  try {
+    const tResp = await fetch(`${baseUrl}/rest/api/3/issue/${issueKey}/transitions`, {
+      headers: { "Authorization": auth, "Accept": "application/json" }
+    });
+
+    if (!tResp.ok) {
+      console.error(`Failed to get transitions for ${issueKey}: ${tResp.status}`);
+      return { success: false, error: "fetch_transitions_failed", status: tResp.status };
+    }
+
+    const { transitions } = await tResp.json();
+    const transitionNames = transitions.map(t => t.name);
+    console.log(`Available transitions for ${issueKey}:`, transitionNames);
+
+    // Try to find a matching transition from the target names
+    const target = transitions.find(t =>
+      targetNames.some(name => t.name.toLowerCase().includes(name.toLowerCase()))
+    );
+
+    if (!target) {
+      console.error(`No matching transition found for ${issueKey}. Tried: [${targetNames.join(", ")}]. Available: [${transitionNames.join(", ")}]`);
+      return { success: false, error: "transition_not_found", available: transitionNames };
+    }
+
+    console.log(`Transitioning ${issueKey} via "${target.name}" (id: ${target.id})`);
+
+    const postResp = await fetch(`${baseUrl}/rest/api/3/issue/${issueKey}/transitions`, {
+      method: "POST",
+      headers: { "Authorization": auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ transition: { id: target.id } })
+    });
+
+    if (!postResp.ok) {
+      const errorText = await postResp.text();
+      console.error(`Transition failed for ${issueKey}: ${postResp.status} - ${errorText}`);
+      return { success: false, error: "transition_failed", status: postResp.status, details: errorText };
+    }
+
+    console.log(`Successfully transitioned ${issueKey} to "${target.name}"`);
+    return { success: true, transitionName: target.name };
+  } catch (err) {
+    console.error(`Exception transitioning ${issueKey}:`, err);
+    return { success: false, error: "exception", message: String(err) };
+  }
+}
+
+/**
+ * Post a comment to a Jira issue
+ * @param {string} baseUrl - Jira base URL
+ * @param {string} auth - Basic auth header value
+ * @param {string} issueKey - Jira issue key (e.g., "SCRUM-123")
+ * @param {string} commentText - Plain text comment to post
+ * @returns {Promise<boolean>} - true if successful
+ */
+async function postJiraComment(baseUrl, auth, issueKey, commentText) {
+  try {
+    const resp = await fetch(`${baseUrl}/rest/api/3/issue/${issueKey}/comment`, {
+      method: "POST",
+      headers: { "Authorization": auth, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        body: {
+          type: "doc",
+          version: 1,
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: commentText }]
+          }]
+        }
+      })
+    });
+
+    if (!resp.ok) {
+      const errorText = await resp.text();
+      console.error(`Failed to post comment to ${issueKey}: ${resp.status} - ${errorText}`);
+      return false;
+    }
+
+    console.log(`Posted comment to ${issueKey}`);
+    return true;
+  } catch (err) {
+    console.error(`Exception posting comment to ${issueKey}:`, err);
+    return false;
+  }
+}
+
+/**
+ * Get the Jira API base URL for scoped tokens
+ * Scoped tokens require api.atlassian.com endpoint
+ * @param {string} cloudId - Atlassian Cloud ID
+ * @returns {string} - API base URL
+ */
+function getJiraApiUrl(cloudId) {
+  return `https://api.atlassian.com/ex/jira/${cloudId}`;
+}
 
 export const jiraOrchestrator = onRequest({
   region: "europe-west3", // pick your region
-  secrets: [GH_TOKEN, WEBHOOK_SECRET, JIRA_BASE, JIRA_EMAIL, JIRA_API_TOKEN]
+  secrets: [GH_TOKEN, WEBHOOK_SECRET, JIRA_BASE, JIRA_CLOUD_ID, JIRA_EMAIL, JIRA_API_TOKEN]
 }, async (req, res) => {
   try {
     if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
@@ -59,13 +166,14 @@ export const jiraOrchestrator = onRequest({
     // Create GitHub Issue content with Jira details (description + comments)
     console.log(`Creating GitHub issue for Claude App: ${issueKey}`);
 
-    // Fetch Jira comments
+    // Fetch Jira comments using scoped API endpoint
     const auth = "Basic " + Buffer.from(`${JIRA_EMAIL.value()}:${JIRA_API_TOKEN.value()}`).toString("base64");
     const jiraHeaders = { "Authorization": auth, "Accept": "application/json" };
+    const jiraApiUrl = getJiraApiUrl(JIRA_CLOUD_ID.value());
 
     let commentsMarkdown = "_No comments_";
     try {
-      const commentsResp = await fetch(`${JIRA_BASE.value()}/rest/api/3/issue/${issueKey}/comment?expand=renderedBody`, {
+      const commentsResp = await fetch(`${jiraApiUrl}/rest/api/3/issue/${issueKey}/comment?expand=renderedBody`, {
         headers: jiraHeaders
       });
       if (commentsResp.ok) {
@@ -128,23 +236,24 @@ export const jiraOrchestrator = onRequest({
     const issueData = await ghResp.json();
     console.log(`Created issue #${issueData.number} for ${issueKey}`);
 
-    // Optional: pre-transition Jira to In Progress
-    const tResp = await fetch(`${JIRA_BASE.value()}/rest/api/3/issue/${issueKey}/transitions`, {
-      headers: { "Authorization": auth, "Accept": "application/json" }
-    });
-    if (tResp.ok) {
-      const transitions = await tResp.json();
-      const inProgress = (transitions.transitions || []).find(t => /in progress/i.test(t.name));
-      if (inProgress) {
-        await fetch(`${JIRA_BASE.value()}/rest/api/3/issue/${issueKey}/transitions`, {
-          method: "POST",
-          headers: { "Authorization": auth, "Content-Type": "application/json" },
-          body: JSON.stringify({ transition: { id: inProgress.id } })
-        });
-      }
-    }
+    // Transition Jira to In Progress with multiple name variations
+    const transitionResult = await transitionJiraIssue(
+      jiraApiUrl,
+      auth,
+      issueKey,
+      ["in progress", "start progress", "begin", "start work", "working"]
+    );
 
-    return res.json({ ok: true });
+    // Post notification comment to Jira
+    const commentText = `🤖 Claude Code Agent started implementation.\n\nGitHub Issue: ${issueData.html_url}\n\nThe AI agent is now working on this ticket. You will receive updates as progress is made.`;
+    await postJiraComment(jiraApiUrl, auth, issueKey, commentText);
+
+    return res.json({ 
+      ok: true, 
+      issue_number: issueData.number,
+      issue_url: issueData.html_url,
+      jira_transition: transitionResult
+    });
   } catch (err) {
     console.error(err);
     return res.status(500).json({ error: "internal", message: String(err) });
