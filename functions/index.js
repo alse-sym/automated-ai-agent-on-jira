@@ -259,3 +259,147 @@ export const jiraOrchestrator = onRequest({
     return res.status(500).json({ error: "internal", message: String(err) });
   }
 });
+
+// --- AI Research Orchestrator ---
+// Triggered when a Jira ticket is labeled with "Needs AI Research"
+// Creates a GitHub issue for Claude Code to research the codebase and create an implementation plan
+export const jiraResearchOrchestrator = onRequest({
+  region: "europe-west3",
+  secrets: [GH_TOKEN, WEBHOOK_SECRET, JIRA_BASE, JIRA_CLOUD_ID, JIRA_EMAIL, JIRA_API_TOKEN]
+}, async (req, res) => {
+  try {
+    if (req.method !== "POST") return res.status(405).send("Method Not Allowed");
+
+    // Verify shared secret (optional for testing)
+    const providedSecret = req.get("x-webhook-secret");
+    if (providedSecret && providedSecret !== WEBHOOK_SECRET.value()) {
+      console.log("Invalid webhook secret provided");
+      return res.status(401).json({ error: "invalid_secret" });
+    }
+
+    const { issueKey, summary, description, repo, ref = "main" } = req.body || {};
+    if (!issueKey || !summary || !repo) {
+      return res.status(400).json({ error: "missing_fields", required: ["issueKey", "summary", "repo"] });
+    }
+
+    const [owner, name] = repo.split("/");
+    console.log(`[Research] Processing AI research request for: ${issueKey}`);
+
+    // Check if a research-request issue already exists for this Jira key
+    const searchResp = await fetch(
+      `https://api.github.com/search/issues?q=${issueKey}+repo:${owner}/${name}+type:issue+label:ai-research+state:open`,
+      {
+        headers: {
+          "Authorization": `Bearer ${GH_TOKEN.value()}`,
+          "Accept": "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28"
+        }
+      }
+    );
+
+    if (searchResp.ok) {
+      const searchData = await searchResp.json();
+      if (searchData.total_count > 0) {
+        console.log(`[Research] Research request already exists for ${issueKey}: #${searchData.items[0].number}`);
+        return res.json({
+          ok: true,
+          skipped: true,
+          reason: "research_request_exists",
+          issue_number: searchData.items[0].number
+        });
+      }
+    }
+
+    // Fetch Jira comments using scoped API endpoint
+    const auth = "Basic " + Buffer.from(`${JIRA_EMAIL.value()}:${JIRA_API_TOKEN.value()}`).toString("base64");
+    const jiraHeaders = { "Authorization": auth, "Accept": "application/json" };
+    const jiraApiUrl = getJiraApiUrl(JIRA_CLOUD_ID.value());
+
+    let commentsMarkdown = "_No comments_";
+    try {
+      const commentsResp = await fetch(`${jiraApiUrl}/rest/api/3/issue/${issueKey}/comment?expand=renderedBody`, {
+        headers: jiraHeaders
+      });
+      if (commentsResp.ok) {
+        const commentsJson = await commentsResp.json();
+        const comments = commentsJson.comments || [];
+        if (comments.length > 0) {
+          const stripHtml = (html) => (html || "").replace(/<[^>]+>/g, "").trim();
+          commentsMarkdown = comments
+            .map(c => {
+              const author = (c.author && (c.author.displayName || c.author.name)) || "unknown";
+              const created = c.created ? c.created.substring(0, 10) : "";
+              const body = c.renderedBody ? stripHtml(c.renderedBody) : (typeof c.body === "string" ? c.body : "");
+              const preview = body.length > 1000 ? `${body.substring(0, 1000)}…` : body;
+              return `- ${author} (${created}):\n  ${preview}`;
+            })
+            .join("\n\n");
+        }
+      } else {
+        console.log(`[Research] Failed to fetch Jira comments for ${issueKey}: ${commentsResp.status}`);
+      }
+    } catch (e) {
+      console.log(`[Research] Error fetching Jira comments for ${issueKey}:`, e);
+    }
+
+    // Create GitHub Issue for AI research (different labels and instruction)
+    const jiraUrl = `${JIRA_BASE.value()}/browse/${issueKey}`;
+    const issueBody = [
+      `@claude research this:`,
+      "",
+      `## Jira Description`,
+      description || "(no description)",
+      "",
+      `## Jira Comments`,
+      commentsMarkdown,
+      "",
+      `## Source`,
+      `- Jira: ${jiraUrl}`,
+      "",
+      `## Instructions`,
+      `Research the codebase and create a detailed implementation plan for this ticket.`,
+      `The plan should be written back to the Jira ticket description.`,
+      `After completing the research, move the ticket back to "To Do" and unassign it.`
+    ].join("\n");
+
+    console.log(`[Research] Creating GitHub issue for AI research: ${issueKey}`);
+
+    const ghResp = await fetch(
+      `https://api.github.com/repos/${owner}/${name}/issues`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${GH_TOKEN.value()}`,
+          "Accept": "application/vnd.github+json",
+          "X-GitHub-Api-Version": "2022-11-28"
+        },
+        body: JSON.stringify({
+          title: `${issueKey}: [AI Research] ${summary}`,
+          body: issueBody,
+          labels: ["from-jira", "ai-research"]
+        })
+      }
+    );
+
+    if (!ghResp.ok) {
+      return res.status(502).json({ error: "github_request_failed", details: await ghResp.text() });
+    }
+
+    const issueData = await ghResp.json();
+    console.log(`[Research] Created AI research issue #${issueData.number} for ${issueKey}`);
+
+    // Post notification comment to Jira
+    const commentText = `🔍 Claude Code Agent started AI research.\n\nGitHub Issue: ${issueData.html_url}\n\nThe AI agent is researching the codebase and will update the ticket description with an implementation plan.`;
+    await postJiraComment(jiraApiUrl, auth, issueKey, commentText);
+
+    return res.json({
+      ok: true,
+      issue_number: issueData.number,
+      issue_url: issueData.html_url,
+      action: "research_request_created"
+    });
+  } catch (err) {
+    console.error("[Research] Error:", err);
+    return res.status(500).json({ error: "internal", message: String(err) });
+  }
+});
