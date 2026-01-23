@@ -135,12 +135,13 @@ export const jiraOrchestrator = onRequest({
       return res.status(400).json({ error: "missing_fields", required: ["issueKey", "summary", "repo"] });
     }
 
-    // Check if issue already exists for this Jira key
+    // Check if an IMPLEMENTATION issue already exists for this Jira key
+    // Only skip if there's an open ai-task issue (not research issues)
     const [owner, name] = repo.split("/");
-    console.log(`Checking for existing issue: ${issueKey}`);
+    console.log(`Checking for existing implementation issue: ${issueKey}`);
     
     const searchResp = await fetch(
-      `https://api.github.com/search/issues?q=${issueKey}+repo:${owner}/${name}+type:issue`,
+      `https://api.github.com/search/issues?q=${issueKey}+repo:${owner}/${name}+type:issue+label:ai-task+state:open`,
       {
         headers: {
           "Authorization": `Bearer ${GH_TOKEN.value()}`,
@@ -153,11 +154,11 @@ export const jiraOrchestrator = onRequest({
     if (searchResp.ok) {
       const searchData = await searchResp.json();
       if (searchData.total_count > 0) {
-        console.log(`Issue already exists for ${issueKey}: #${searchData.items[0].number}`);
+        console.log(`Implementation issue already exists for ${issueKey}: #${searchData.items[0].number}`);
         return res.json({ 
           ok: true, 
           skipped: true, 
-          reason: "issue_exists",
+          reason: "implementation_issue_exists",
           issue_number: searchData.items[0].number 
         });
       }
